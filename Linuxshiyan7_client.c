@@ -28,32 +28,36 @@ void handler(int signo)               //捕获信号后的处理程序
 	}
 }
 
-int main(int argc, char *argv[])
+int main()
 {
 	struct sockaddr_in servaddr;
 	char message_send[MAXSIZE]; //向服务端发送的消息
 	char message_recv[MAXSIZE]; //从服务端接收的消息
 	int sockfd;					//套接字文件描述符，类似管道。（套接字对象）
-	if (argc != 2)
-	{
-		printf("程序启动缺少用户名!\n");
-		exit(-1);
-	}
+	// if (argc != 2)
+	// {
+	// 	printf("程序启动缺少用户名!\n");
+	// 	exit(-1);
+	// }
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0); //创建套接字对象，打开网络通信端口
 	//设置服务器地址
-	bzero(&servaddr, sizeof(servaddr));					 //结构体置零
-	servaddr.sin_family = AF_INET;						 //设置协议
-	inet_pton(AF_INET, "127.0.0.1", &servaddr.sin_addr); //设置IP地址
-	servaddr.sin_port = htons(SERV_PORT);				 //设置端口号
+	bzero(&servaddr, sizeof(servaddr));					       //结构体置零
+	servaddr.sin_family = AF_INET;						       //设置协议
+	inet_pton(AF_INET, "114.116.110.230", &servaddr.sin_addr); //设置IP地址
+	servaddr.sin_port = htons(SERV_PORT);				       //设置端口号
 
 	char password[10];
 	char username[30];
+	char argv[30];
+	printf("请输入用户名\n");
+	scanf("%s",argv);
+	while(getchar()!='\n');
 	printf("请输入密码\n");
 	int i=0;                                              //计数器
 	while(1)              
 	{
 	fgets(password, sizeof(password), stdin);
-	strcpy(username,argv[1]);
+	strcpy(username,argv);
 	strcat(username, " "); //在用户名和密码之间插入一个间隔符号（空格）
 	char *login_info = strcat(username, password);
 	//登陆验证
