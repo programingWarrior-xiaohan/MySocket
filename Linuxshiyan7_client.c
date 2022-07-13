@@ -43,7 +43,7 @@ int main()
 	//设置服务器地址
 	bzero(&servaddr, sizeof(servaddr));					       //结构体置零
 	servaddr.sin_family = AF_INET;						       //设置协议
-	inet_pton(AF_INET, "114.116.110.230", &servaddr.sin_addr); //设置IP地址
+	inet_pton(AF_INET, "127.0.0.0.1", &servaddr.sin_addr); //设置IP地址
 	servaddr.sin_port = htons(SERV_PORT);				       //设置端口号
 
 	char password[10];
@@ -57,18 +57,30 @@ int main()
 	while(1)              
 	{
 	fgets(password, sizeof(password), stdin);
-	strcpy(username,argv);
-	strcat(username, " "); //在用户名和密码之间插入一个间隔符号（空格）
-	char *login_info = strcat(username, password);
+	//登陆时，消息显示登陆标签，通过登陆标签来示意给服务端，这是一条登陆指令(消息).
+	//而服务端晓得这是登陆指令后，便采取有关登陆的动作.
+	//这样做的解决的问题是：1.登陆操作与无法识别操作的混淆，(之前登陆判断是通过已有的用户名，不明确，比如输入一个不存在的用户名，服务器给出的判断是'无法识别指令'，而不是'用户名不存在'.)
+	//2.提高了运行效率，减少了不必要的循环。现在只需一条判断语句便可知是否是登陆命令，而不是循环。同时登陆判断独立起来，不与操作指令和未知指令一起判断，提高了判断速度。
+	//3.保证了登陆的唯一性，也就是说每个用户登陆成功后，便不可再执行登陆操作。因为客户端登陆验证和之后的发送指令是分离的。
+	char login_info[60] = "<LOGIN> ";                        //登陆标签
+	strcat(login_info,argv);
+	strcat(login_info, " "); //在用户名和密码之间插入一个间隔符号（空格）
+	strcat(login_info, password);
 	//登陆验证
 	sendto(sockfd, login_info, strlen(login_info) + 1, 0, (struct sockaddr *)&servaddr, sizeof(servaddr)); //向服务端请求登陆验证
 
 	recvfrom(sockfd, message_recv, sizeof(message_recv), 0, NULL, 0); //接受服务端发送的信息。
 	printf("%s", message_recv); //服务端发送的信息中包含\n和\0.
-	if(strcmp(message_recv,"登陆失败，密码错误或该用户已登陆\n")!=0)       //如果登陆成功
+	if(strcmp(message_recv,"该用户名不存在.\n")==0)
+	{
+		printf("(已退出)\n");
+		exit(-1);
+	}
+	if(strcmp(message_recv,"登陆成功.\n")==0)       //如果登陆成功
 	{
 		break;
 	}
+	//如果密码错误
 	if(i == 2)                                   //密码最多输入三次，三次错误后退出
 	{
 		printf("连续三次输入错误，退出程序!\n");
@@ -105,7 +117,7 @@ int main()
 		{
 			recvfrom(sockfd, message_recv, sizeof(message_recv), 0, NULL, 0); //接受服务端发送的信息
 			printf("%s", message_recv);
-			if(strcmp(message_recv,"拜拜，欢迎下次再来\n")==0)//程序唯一出口
+			if(strcmp(message_recv,"拜拜，欢迎下次再来\n")==0||strcmp(message_recv,"用户名被异地登陆，强制退出\n")==0)//程序唯一出口
 				break;
 		}
 		kill(getppid(),SIGKILL);//子进程直接发送2号信号给父进程，父进程直接终止

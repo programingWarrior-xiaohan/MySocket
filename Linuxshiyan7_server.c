@@ -103,7 +103,7 @@ int main()
 	return 0;
 }
 int decompose_string(char *str, char (*words)[MAXSIZE]) //分解字符串,words是数组指针，指向一整个数组。
-{
+{//传入一个字符串和一个空的二维字符数组（字符串数组），该函数处理后会传出一个字符串数组(数组指针),同时返回分割后字符串的个数。
 	char *p = str;
 	int i = 0, j = 0;
 
@@ -116,14 +116,14 @@ int decompose_string(char *str, char (*words)[MAXSIZE]) //分解字符串,words�
 	words[i][j] = '\0'; //是字符数组转化为字符串
 	i++;				//将words指向下一个单词
 	j = 0;				//为吸收下一个单词做好准备
-	if (*p == '\n')
+	if (*p == '\n')     //针对"logout"指令
 		return i; //返回单词个数
 
 	while (*p == ' ')
 		p++; //跳过空格，为吸收下一个字符串做好准备
 
-	if (strcmp(words[0], "to") == 0) //如果首单词为"to"
-	{
+	if (strcmp(words[0], "to") == 0 || strcmp(words[0],"<LOGIN>")==0) //如果首单词为"to"或者为"<LOGIN>"，则多吸收一个字符串。多吸收的字符串均为用户名
+	{//to指令AND<LOGIN>指令，均分割为三段。
 		while (*p != ' ')
 		{
 			words[i][j] = *p;
@@ -136,7 +136,7 @@ int decompose_string(char *str, char (*words)[MAXSIZE]) //分解字符串,words�
 		i++;
 		j = 0; //为吸收下一个单词做好准备
 	}
-	while (*p != '\n') //吸收发向所有用户的消息
+	while (*p != '\n') //吸收发向所有用户的消息(to/toall)OR密码(<LOGIN>)
 	{
 		words[i][j] = *p;
 		p++;
@@ -154,15 +154,9 @@ void process_instructions(int sockfd, char (*instructions)[MAXSIZE], const struc
 	int flag = INITIAL; //标志指令的属性
 	int i = 0, j = 0;
 
-	for (i = 0; i < user_current_count; i++) //比对首单词是不是用户名
-	{
-		if (strcmp(UserInfos[i].username, pp[0]) == 0) //匹配登陆用户的信息
-		{
-			flag = LOGIN; //将标志设为登陆
-			goto x;
-		}
-	}
 
+	
+	
 	for (j = 0; j < INS_COUNT; j++)
 	{
 		if (strcmp(Instructions[j], pp[0]) == 0) //匹配指令
@@ -171,25 +165,70 @@ void process_instructions(int sockfd, char (*instructions)[MAXSIZE], const struc
 			goto x;
 		}
 	}
+	if(strcmp(pp[0],"<LOGIN>")==0)               //如果消息中包含登陆标签
+		flag = LOGIN;
 
+	//这里有一个漏洞：一个用户(阿龙)可以通过命令(xiaozhang 123)登陆另一个用户(xiaozhang)，即在一个终端同时运行两个用户，这是不可取的。	
+	// for (i = 0; i < user_current_count; i++) //比对首单词是不是用户名
+	// {
+	// 	if (strcmp(UserInfos[i].username, pp[0]) == 0) //匹配登陆用户的信息
+	// 	{
+	// 		flag = LOGIN; //将标志设为登陆
+	// 		break;
+	// 	}
+	// }
 x:
 	switch (flag)
 	{
 	case LOGIN: //处理登陆操作
-		if (strcmp(UserInfos[i].password, pp[1]) != 0 || UserInfos[i].mode == 1)
+		//判定用户名是否存在，如果存在锁定该用户信息
+		for (i = 0; i < user_current_count; i++)           //比对次单词是不是用户名
 		{
-			printf("用户%s登陆异常\n", UserInfos[i].username);
-			sendto(sockfd, "登陆失败，密码错误或该用户已登陆\n", sizeof("登陆失败，密码错误或该用户已登陆\n"), 0, (struct sockaddr *)recvaddr, sizeof(*recvaddr));
+	 		if (strcmp(UserInfos[i].username, pp[1]) == 0) //通过用户名匹配登陆用户的信息
+	 		{
+	 			break;
+	 		}
+		}
+		//首先检验用户名是否存在？
+		if(i==user_current_count)           //如果不存在
+		{
+			printf("用户名:%s不存在\n", pp[1]);
+			sendto(sockfd, "该用户名不存在.\n", sizeof("该用户名不存在.\n"), 0, (struct sockaddr *)recvaddr, sizeof(*recvaddr));
 			break;
 		}
+		
+		//检验密码是否正确
+		if (strcmp(UserInfos[i].password, pp[2]) != 0)
+		{
+			printf("用户:%s密码错误\n", UserInfos[i].username);
+			sendto(sockfd, "登陆失败，密码错误.\n", sizeof("登陆失败，密码错误.\n"), 0, (struct sockaddr *)recvaddr, sizeof(*recvaddr));
+			break;
+		}
+		
 		char str_ip[INET_ADDRSTRLEN]; //长度正好是IPv4的字符串长度正好16.
+		//如果密码错误，不会导致该用户下线。
+		//异地登陆成功的话
+		if (UserInfos[i].mode == 1)         //如果用户已经在线，该版本支持用户异地登陆，所以一定要保护好密码哟～
+		{
+			sendto(sockfd,"用户名被异地登陆，强制退出\n",sizeof("用户名被异地登陆，强制退出\n"),0,(struct sockaddr *)&UserInfos[i].useraddr,sizeof(UserInfos[i].useraddr));
+			printf("用户名:%s被IP地址:%s异地登陆，端口号为:%d.\n",UserInfos[i].username,
+				inet_ntop(AF_INET,&recvaddr->sin_addr,str_ip,sizeof(str_ip)),
+				ntohs(recvaddr->sin_port));
+			//sendto(sockfd, "登陆成功.\n", sizeof("登陆成功.\n"), 0, (struct sockaddr *)recvaddr, sizeof(*recvaddr));
+			//break;
+		}
+		
+		
 		//将用户的地址存入结构体中
 		UserInfos[i].useraddr = *recvaddr; //将用户的地址存入结构体中,再输出地址之前，必须先初始化UserInfos[i].useraddr.否则第一次输出的ip地址和端口号都是0
+		if(UserInfos[i].mode == 0)         //正常情况下的输入，防止异地登陆的二次输出，因为异地登陆的话，已经输出过。
+		{
+			printf("用户:%s已登陆,IP地址:%s,端口号:%d\n", UserInfos[i].username,
+				inet_ntop(AF_INET, &UserInfos[i].useraddr.sin_addr, str_ip, sizeof(str_ip)), //导出客户端的IP地址
+				ntohs(UserInfos[i].useraddr.sin_port));										 //导出客户端的端口号
+		}
 		UserInfos[i].mode = 1;			   //标志用户已上线
-		printf("用户:%s已登陆,IP地址:%s,端口号:%d\n", UserInfos[i].username,
-			   inet_ntop(AF_INET, &UserInfos[i].useraddr.sin_addr, str_ip, sizeof(str_ip)), //导出客户端的IP地址
-			   ntohs(UserInfos[i].useraddr.sin_port));										//导出客户端的端口号
-		sendto(sockfd, "登陆成功\n", sizeof("登陆成功\n"), 0, (struct sockaddr *)recvaddr, sizeof(*recvaddr));
+		sendto(sockfd, "登陆成功.\n", sizeof("登陆成功.\n"), 0, (struct sockaddr *)recvaddr, sizeof(*recvaddr));
 
 		//向其他在线用户发送该用户以上线
 		char online_reminder[MAXSIZE];
