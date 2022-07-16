@@ -43,7 +43,7 @@ int main()
 	//设置服务器地址
 	bzero(&servaddr, sizeof(servaddr));					       //结构体置零
 	servaddr.sin_family = AF_INET;						       //设置协议
-	inet_pton(AF_INET, "127.0.0.0.1", &servaddr.sin_addr); //设置IP地址
+	inet_pton(AF_INET, "114.116.110.230", &servaddr.sin_addr); //设置IP地址
 	servaddr.sin_port = htons(SERV_PORT);				       //设置端口号
 
 	char password[10];
